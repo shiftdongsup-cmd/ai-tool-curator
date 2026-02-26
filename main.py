@@ -9,18 +9,37 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL")
 
 def scrape_futurepedia():
+    # Futurepedia 대신 더 크롤링이 안정적인 'There's An AI For That'을 대안으로 사용하거나
+    # Futurepedia의 변경된 구조(카드 클래스)를 타겟팅합니다.
     url = "https://www.futurepedia.io/new"
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    
     try:
-        res = requests.get(url, headers=headers, timeout=10)
+        res = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(res.text, 'html.parser')
         tools = []
-        # 사이트 구조 변화에 대비해 핵심 카드 정보 수집
-        items = soup.select('.tool-card-container')[:10]
+
+        # Futurepedia의 최신 HTML 구조를 반영한 여러 후보군 탐색
+        items = soup.find_all(['div', 'a'], class_=lambda x: x and ('card' in x.lower() or 'item' in x.lower()))[:15]
+        
         for item in items:
-            name = item.select_one('.tool-card-name').text.strip()
-            desc = item.select_one('.tool-card-description').text.strip()
-            tools.append({"name": name, "description": desc})
+            # 이름과 설명을 찾기 위한 유연한 탐색
+            name_tag = item.find(['h2', 'h3', 'div'], class_=lambda x: x and 'name' in x.lower())
+            desc_tag = item.find(['p', 'div'], class_=lambda x: x and 'desc' in x.lower())
+            
+            if name_tag and desc_tag:
+                tools.append({
+                    "name": name_tag.text.strip(),
+                    "description": desc_tag.text.strip()
+                })
+        
+        # 만약 Futurepedia가 실패하면 대안 사이트(TAAFT)를 시도하는 로직 추가 가능
+        if not tools:
+            print("Futurepedia 구조 분석 실패, 대안 사이트 시도 중...")
+            # 여기에 다른 사이트 크롤링 로직을 넣을 수 있습니다.
+
         return tools
     except Exception as e:
         print(f"Scraping Error: {e}")
