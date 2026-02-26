@@ -30,11 +30,19 @@ def filter_tools(tool_list):
     response = model.generate_content(prompt)
     return response.text
 
+# 기존 코드
+# requests.post(SLACK_WEBHOOK_URL, json={"text": summary})
+
+# 권장 코드 (전송 성공 여부를 출력하게 하여 에러 확인)
 def main():
     raw_tools = scrape_futurepedia()
     if raw_tools:
         summary = filter_tools(raw_tools)
-        requests.post(SLACK_WEBHOOK_URL, json={"text": summary})
+        # 응답값을 확인하기 위해 변수에 저장
+        response = requests.post(SLACK_WEBHOOK_URL, json={"text": summary})
+        print(f"Slack response: {response.status_code}, {response.text}")
+    else:
+        print("수집된 데이터가 없습니다.")
 
 if __name__ == "__main__":
     main()
