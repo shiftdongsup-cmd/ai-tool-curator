@@ -6,7 +6,7 @@ on:
   workflow_dispatch: # 수동 실행 버튼 활성화
 
 jobs:
-  build:
+  crawl_and_send:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -14,14 +14,17 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11' # 3.9에서 3.11로 변경
+        python-version: '3.12'
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-    - name: Run script
+    - name: Run crawler
       env:
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      run: python main.py
+        SLACK_CHANNEL: "#ai-tool-news"
+        SCHEDULE_TIMEZONE: "Asia/Seoul"
+        LOOKBACK_HOURS: "24"
+        MAX_ITEMS: "12"
+        REQUEST_TIMEOUT_SEC: "15"
+      run: python crawling.py --once --require-webhook
