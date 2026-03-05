@@ -45,6 +45,7 @@ python crawling.py
 기본 타임존은 `Asia/Seoul`이며 `.env`의 `SCHEDULE_TIMEZONE`으로 변경할 수 있습니다.
 
 슬랙 채널은 `.env`의 `SLACK_CHANNEL`로 지정할 수 있고 기본값은 `#ai-tool-news`입니다.
+메시지 본문은 링크 중심으로 보내며, 각 항목의 요약 문구는 한글 한 줄 형태로 전송됩니다.
 
 ## 5) Windows 작업 스케줄러 추천 방식
 

@@ -1,8 +1,10 @@
 import argparse
+import html
 import importlib
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -121,6 +123,31 @@ def normalize_summary(raw_summary: str) -> str:
     return (text[:177] + "...") if len(text) > 180 else text
 
 
+def clean_text(raw_text: str) -> str:
+    text = html.unescape(raw_text or "")
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def is_korean_text(text: str) -> bool:
+    return bool(re.search(r"[가-힣]", text or ""))
+
+
+def to_korean_one_line_summary(article: Article) -> str:
+    summary = clean_text(article.summary)
+    title = clean_text(article.title)
+
+    if is_korean_text(summary):
+        return summary[:90] + ("..." if len(summary) > 90 else "")
+
+    if summary:
+        # Keep concise Korean-style wording for English sources.
+        return f"{title[:55]} 관련 업데이트입니다. 핵심 내용은 원문 링크에서 확인하세요."
+
+    return "핵심 업데이트가 게시되었습니다. 자세한 내용은 원문 링크를 확인하세요."
+
+
 def fetch_source_articles(source: Source, timeout_sec: int) -> List[Article]:
     logging.info("Fetching: %s", source.name)
     try:
@@ -196,11 +223,12 @@ def build_slack_message(articles: List[Article], lookback_hours: int) -> dict:
     lines = [header, ""]
     for idx, article in enumerate(articles, start=1):
         when = article.published.astimezone().strftime("%m-%d %H:%M")
+        ko_summary = to_korean_one_line_summary(article)
         lines.append(
             f"{idx}. <{article.link}|{article.title}> "
             f"({article.source} / {host_from_url(article.link)} / {when})"
         )
-        lines.append(f"   - {article.summary}")
+        lines.append(f"   - 요약: {ko_summary}")
     return {"text": "\n".join(lines), "mrkdwn": True}
 
 
