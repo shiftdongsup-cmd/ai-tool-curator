@@ -46,6 +46,7 @@ class Article:
     source: str
     published: datetime
     summary: str
+    image_url: str = ""
 
 
 def setup_logging() -> None:
@@ -148,6 +149,38 @@ def to_korean_one_line_summary(article: Article) -> str:
     return "핵심 업데이트가 게시되었습니다. 자세한 내용은 원문 링크를 확인하세요."
 
 
+def extract_image_url(entry: dict) -> str:
+    media_content = entry.get("media_content", [])
+    if media_content and isinstance(media_content, list):
+        first = media_content[0] or {}
+        if first.get("url"):
+            return str(first.get("url")).strip()
+
+    media_thumbnail = entry.get("media_thumbnail", [])
+    if media_thumbnail and isinstance(media_thumbnail, list):
+        first = media_thumbnail[0] or {}
+        if first.get("url"):
+            return str(first.get("url")).strip()
+
+    image_obj = entry.get("image")
+    if isinstance(image_obj, dict) and image_obj.get("href"):
+        return str(image_obj.get("href")).strip()
+
+    for link in entry.get("links", []):
+        link_type = str(link.get("type", ""))
+        if link_type.startswith("image/") and link.get("href"):
+            return str(link.get("href")).strip()
+        if link.get("rel") == "enclosure" and link.get("href") and link_type.startswith("image/"):
+            return str(link.get("href")).strip()
+
+    raw_summary = entry.get("summary", "") or entry.get("description", "")
+    match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', raw_summary, flags=re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+
+    return ""
+
+
 def fetch_source_articles(source: Source, timeout_sec: int) -> List[Article]:
     logging.info("Fetching: %s", source.name)
     try:
@@ -165,6 +198,7 @@ def fetch_source_articles(source: Source, timeout_sec: int) -> List[Article]:
         title = entry.get("title", "Untitled").strip()
         published = parse_datetime(entry)
         summary = normalize_summary(entry.get("summary", "") or entry.get("description", ""))
+        image_url = extract_image_url(entry)
 
         if not summary:
             summary = "요약 정보가 제공되지 않았습니다."
@@ -176,6 +210,7 @@ def fetch_source_articles(source: Source, timeout_sec: int) -> List[Article]:
                 source=source.name,
                 published=published,
                 summary=summary,
+                image_url=image_url,
             )
         )
 
@@ -221,6 +256,20 @@ def build_slack_message(articles: List[Article], lookback_hours: int) -> dict:
         return {"text": "AI 뉴스 데일리 피드: 새 소식이 없습니다.", "mrkdwn": True}
 
     lines = [header, ""]
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "AI 뉴스 데일리 피드", "emoji": True},
+        },
+        {
+            "type": "context",
+            "elements": [
+                {"type": "mrkdwn", "text": f"업데이트: {now_local} | 최근 {lookback_hours}시간"}
+            ],
+        },
+        {"type": "divider"},
+    ]
+
     for idx, article in enumerate(articles, start=1):
         when = article.published.astimezone().strftime("%m-%d %H:%M")
         ko_summary = to_korean_one_line_summary(article)
@@ -229,7 +278,39 @@ def build_slack_message(articles: List[Article], lookback_hours: int) -> dict:
             f"({article.source} / {host_from_url(article.link)} / {when})"
         )
         lines.append(f"   - 요약: {ko_summary}")
-    return {"text": "\n".join(lines), "mrkdwn": True}
+
+        section_text = (
+            f"*{idx}. {article.title[:120]}*\n"
+            f"_{article.source} · {when}_\n"
+            f"요약: {ko_summary}"
+        )
+        section_block = {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": section_text},
+        }
+        if article.image_url.startswith("http://") or article.image_url.startswith("https://"):
+            section_block["accessory"] = {
+                "type": "image",
+                "image_url": article.image_url,
+                "alt_text": article.title[:120] or "news image",
+            }
+        blocks.append(section_block)
+        blocks.append(
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "자세히 보기", "emoji": True},
+                        "url": article.link,
+                        "style": "primary",
+                    }
+                ],
+            }
+        )
+        blocks.append({"type": "divider"})
+
+    return {"text": "\n".join(lines), "mrkdwn": True, "blocks": blocks}
 
 
 def post_to_slack(webhook_url: str, payload: dict, timeout_sec: int, channel: str = "") -> None:
